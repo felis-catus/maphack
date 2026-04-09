@@ -1,4 +1,4 @@
-//========= Copyright Felis, All rights reserved. =============================//
+//========= Copyright Felis, Licensed under 0BSD. =============================//
 //
 // Purpose: "Map hacks" are text files used for adding or modifying entities
 //			in the map. Good for modifying existing maps without having the VMF.

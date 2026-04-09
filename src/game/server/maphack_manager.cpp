@@ -1,4 +1,4 @@
-//========= Copyright Felis, All rights reserved. =============================//
+//========= Copyright Felis, Licensed under 0BSD. =============================//
 //
 // Purpose: "Map hacks" are text files used for adding or modifying entities
 //			in the map. Good for modifying existing maps without having the VMF.
@@ -154,7 +154,7 @@ void MapHack_DebugMsg( const char *pszMsg, ... )
 	if ( !sv_maphack_debug.GetBool() )
 		return;
 
-	static char	szBuffer[1024];
+	static char szBuffer[1024];
 	char szFormattedMessage[512];
 
 	va_list	argPtr;
@@ -362,23 +362,6 @@ void MapHack_EditEntity( CBaseEntity *pEntity, KeyValues *pKV )
 	if ( pEntity && pKV )
 	{
 		MapHack_ParseEntKVBlockHelper( pEntity, pKV );
-
-		KeyValues *pEntKeyValuesVal = pKV->GetFirstValue();
-		while ( pEntKeyValuesVal )
-		{
-			const char *pszValueName = pEntKeyValuesVal->GetName();
-
-			if ( FStrEq( pszValueName, "model" ) )
-			{
-				// Model is a special case, precache and set it
-				const char *pszModelName = pEntKeyValuesVal->GetString();
-				CBaseEntity::PrecacheModel( pszModelName );
-
-				pEntity->SetModel( pszModelName );
-			}
-
-			pEntKeyValuesVal = pEntKeyValuesVal->GetNextValue();
-		}
 	}
 }
 
@@ -401,55 +384,55 @@ bool MapHack_EditEntityField( CBaseEntity *pEntity, const char *pszKeyName, cons
 		case FIELD_MODELNAME:
 		case FIELD_SOUNDNAME:
 		case FIELD_STRING:
-			( *(string_t *)( (char *)pEntity + fieldOffset ) ) = AllocPooledString( pszValue );
+			( *(string_t *)( (intp)pEntity + fieldOffset ) ) = AllocPooledString( pszValue );
 			break;
 
 		// Floats
 		case FIELD_TIME:
 		case FIELD_FLOAT:
-			( *(float *)( (char *)pEntity + fieldOffset ) ) = V_atof( pszValue );
+			( *(float *)( (intp)pEntity + fieldOffset ) ) = V_atof( pszValue );
 			break;
 
 		// Boolean
 		case FIELD_BOOLEAN:
-			( *(bool *)( (char *)pEntity + fieldOffset ) ) = ( V_atoi( pszValue ) != 0 );
+			( *(bool *)( (intp)pEntity + fieldOffset ) ) = ( V_atoi( pszValue ) != 0 );
 			break;
 
 		// Char
 		case FIELD_CHARACTER:
-			( *( (char *)pEntity + fieldOffset ) ) = (char)V_atoi( pszValue );
+			( *(char *)( (intp)pEntity + fieldOffset ) ) = (char)V_atoi( pszValue );
 			break;
 
 		// Short
 		case FIELD_SHORT:
-			( *(short *)( (char *)pEntity + fieldOffset ) ) = (short)V_atoi( pszValue );
+			( *(short *)( (intp)pEntity + fieldOffset ) ) = (short)V_atoi( pszValue );
 			break;
 
 		// Integers
 		case FIELD_INTEGER:
 		case FIELD_TICK:
-			( *(int *)( (char *)pEntity + fieldOffset ) ) = V_atoi( pszValue );
+			( *(int *)( (intp)pEntity + fieldOffset ) ) = V_atoi( pszValue );
 			break;
 
 		// Vectors
 		case FIELD_POSITION_VECTOR:
 		case FIELD_VECTOR:
-			UTIL_StringToVector( (float *)( (char *)pEntity + fieldOffset ), pszValue );
+			UTIL_StringToVector( (float *)( (intp)pEntity + fieldOffset ), pszValue );
 			break;
 
 		// Matrices
 		case FIELD_VMATRIX:
 		case FIELD_VMATRIX_WORLDSPACE:
-			UTIL_StringToFloatArray( (float *)( (char *)pEntity + fieldOffset ), 16, pszValue );
+			UTIL_StringToFloatArray( (float *)( (intp)pEntity + fieldOffset ), 16, pszValue );
 			break;
 
 		case FIELD_MATRIX3X4_WORLDSPACE:
-			UTIL_StringToFloatArray( (float *)( (char *)pEntity + fieldOffset ), 12, pszValue );
+			UTIL_StringToFloatArray( (float *)( (intp)pEntity + fieldOffset ), 12, pszValue );
 			break;
 
 		// Colors
 		case FIELD_COLOR32:
-			UTIL_StringToColor32( (color32 *)( (char *)pEntity + fieldOffset ), pszValue );
+			UTIL_StringToColor32( (color32 *)( (intp)pEntity + fieldOffset ), pszValue );
 			break;
 
 		// Ignore these
@@ -481,7 +464,7 @@ bool MapHack_RemoveEntityConnections( CBaseEntity *pEntity )
 			if ( pDataMap->dataDesc[i].fieldType == FIELD_CUSTOM &&
 				( pDataMap->dataDesc[i].flags & ( FTYPEDESC_OUTPUT | FTYPEDESC_KEY ) ) )
 			{
-				CBaseEntityOutput *pOutput = (CBaseEntityOutput *)( (char *)pEntity + pDataMap->dataDesc[i].fieldOffset[0] );
+				CBaseEntityOutput *pOutput = (CBaseEntityOutput *)( (intp)pEntity + pDataMap->dataDesc[i].fieldOffset[0] );
 
 				// Remove all connections
 				pOutput->DeleteAllElements();
@@ -490,6 +473,46 @@ bool MapHack_RemoveEntityConnections( CBaseEntity *pEntity )
 	}
 
 	return true;
+}
+
+//-----------------------------------------------------------------------------
+// Brushes require mins/maxs to be set after an entity has spawned
+//-----------------------------------------------------------------------------
+void MapHack_FixCollisionBounds( CBaseEntity *pEntity, KeyValues *pKV )
+{
+	if ( !pEntity || !pKV )
+		return;
+
+	// Only meaningful on brush entities
+	if ( pEntity->GetSolid() != SOLID_BSP )
+		return;
+
+	// If we have no valid model, become a "fake brush" using the bounding box
+	if ( !pEntity->GetModel() )
+	{
+		pEntity->SetSolid( SOLID_BBOX );
+	}
+
+	KeyValues *pNode = pKV->GetFirstValue();
+	while ( pNode )
+	{
+		const char *pszName = pNode->GetName();
+
+		if ( FStrEq( pszName, "mins" ) )
+		{
+			Vector vecMins;
+			UTIL_StringToVector( vecMins.Base(), pNode->GetString() );
+			pEntity->CollisionProp()->SetCollisionBounds( vecMins, pEntity->CollisionProp()->OBBMaxs() );
+		}
+		else if ( FStrEq( pszName, "maxs" ) )
+		{
+			Vector vecMaxs;
+			UTIL_StringToVector( vecMaxs.Base(), pNode->GetString() );
+			pEntity->CollisionProp()->SetCollisionBounds( pEntity->CollisionProp()->OBBMins(), vecMaxs );
+		}
+
+		pNode = pNode->GetNextValue();
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -794,7 +817,7 @@ void CMapHackManager::InvokeEntityOutputCallbacks( const MapHackOutputCallbackPa
 				const typedescription_t *pDataDesc = &pDataMap->dataDesc[j];
 				if ( pDataDesc->fieldType == FIELD_CUSTOM && pDataDesc->flags & FTYPEDESC_OUTPUT )
 				{
-					const CBaseEntityOutput *pOutput = (CBaseEntityOutput *)( (int)pEnt + (int)pDataDesc->fieldOffset[0] );
+					const CBaseEntityOutput *pOutput = (CBaseEntityOutput *)( (intp)pEnt + (int)pDataDesc->fieldOffset[0] );
 					if ( pOutput == params.m_pSource )
 					{
 						callback.m_fnCallback( pEnt, pDataDesc->externalName, params );
@@ -1410,6 +1433,7 @@ void CMapHackManager::RunEntities( KeyValues *pKV )
 
 					// Spawn!
 					DispatchSpawn( pEntity );
+					MapHack_FixCollisionBounds( pEntity, pEntityKeyValues );
 					m_dictSpawnedEnts.Insert( STRING( pEntity->GetEntityName() ), pEntity );
 					MapHack_DebugMsg( "Spawned entity \"%s\" (targetname: %s)\n", pszName, STRING( pEntity->GetEntityName() ) );
 				}
@@ -1833,7 +1857,11 @@ void CMapHackManager::KvModify( KeyValues *pKV )
 
 					if ( FStrEq( pszValue, szExtractedValue ) )
 					{
-						pEntData->RemoveValue( pNode->GetName() );
+						if ( !pEntData->RemoveValue( pNode->GetName() ) )
+						{
+							// Shouldn't happen here
+							Assert( 0 );
+						}
 					}
 
 					pNode = pNode->GetNextKey();
@@ -2435,7 +2463,7 @@ void CMapHackManager::KvScript( KeyValues *pKV ) const
 	if ( pszFile )
 	{
 		// Load from file
-		bSuccess = VScriptRunScript( pszFile );
+		bSuccess = VScriptRunScript( pszFile, true /* bWarnMissing */ );
 	}
 	else if ( pszRun )
 	{
@@ -2572,7 +2600,7 @@ MapHackType_t CMapHackManager::GetTypeForString( const char *pszValue )
 
 	if ( *pszValue == 0 )
 	{
-		// It's a string
+		// Pass it as a string
 	}
 	else if ( ( pFEnd > pIEnd ) && ( pFEnd == pSEnd ) )
 	{
@@ -2906,19 +2934,19 @@ CBaseEntity *CMapHackManager::RespawnEntity( CBaseEntity *pEntity ) const
 	const char *pEntData = HasEntData() ? GetMapEntitiesString() : engine->GetMapEntitiesString();
 	for ( ; true; pEntData = MapEntity_SkipToNextEntity( pEntData, szTokenBuffer ) )
 	{
-		char token[MAPKEY_MAXLENGTH];
-		pEntData = MapEntity_ParseToken( pEntData, token );
+		char szToken[MAPKEY_MAXLENGTH];
+		pEntData = MapEntity_ParseToken( pEntData, szToken );
 		if ( !pEntData )
 		{
 			break;
 		}
 
-		if ( token[0] != '{' )
+		if ( szToken[0] != '{' )
 		{
 			continue;
 		}
 
-		CEntityMapData entData( (char*)pEntData );
+		CEntityMapData entData( const_cast<char *>( pEntData ) );
 		char szExtractedHammerID[16];
 		if ( !entData.ExtractValue( "hammerid", szExtractedHammerID ) )
 		{
@@ -3412,8 +3440,9 @@ bool MapHackEntityData_t::SetKeyValue( const char *pszKeyName, const char *pszNe
 
 				// prevData has a space at the start, separating the value from the key
 				// Add 1 to prevData when pasting in the new Value, to account for the space
+				const intp offset = entDataSize - ( pPrevData - m_pEntData ) + 1;
 				V_strncpy( pPrevData + 1, szNewValue, newValueLen );
-				V_strcat( pPrevData, pPostData, entDataSize - ( pPrevData - m_pEntData ) + 1 );
+				V_strcat( pPrevData, pPostData, (int)( entDataSize - offset ) );
 
 				delete[] pPostData;
 
@@ -3538,7 +3567,6 @@ bool MapHackEntityData_t::RemoveValue( const char *pszKeyName ) const
 		char *pszSub = V_strstr( m_pEntData, szLine );
 		if ( !pszSub )
 		{
-			Assert( 0 );
 			return false;
 		}
 
@@ -3549,7 +3577,9 @@ bool MapHackEntityData_t::RemoveValue( const char *pszKeyName ) const
 		const char *pszCurrent = pszEnd;
 		while ( pszCurrent )
 		{
-			V_memmove( pszSub, pszFrom, pszEnd - pszFrom );
+			const intp count = pszEnd - pszFrom;
+			V_memmove( pszSub, pszFrom, (int)count );
+
 			pszSub += pszEnd - pszFrom;
 			pszFrom = pszEnd + remLen;
 
