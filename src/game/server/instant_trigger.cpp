@@ -6,8 +6,7 @@
 
 #include "cbase.h"
 #include "filters.h"
-#include "nmrih_maphack_manager.h"
-#include "nmrih_player.h"
+#include "maphack_manager.h"
 #include "instant_trigger.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -130,7 +129,7 @@ bool CInstantTrigger::CanTrigger( CBaseEntity *pEnt ) const
 	// Players
 	if ( ( m_bAllowPlayers || m_bAllowAll ) && ( pEnt->GetFlags() & FL_CLIENT ) )
 	{
-		CNMRiH_Player *pPlayer = ToNMRiHPlayer( pEnt );
+		CBasePlayer *pPlayer = ToBasePlayer( pEnt );
 		return ( pPlayer && !pPlayer->IsObserver() && pPlayer->IsAlive() ); // Ignore observers
 	}
 
