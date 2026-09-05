@@ -3440,9 +3440,8 @@ bool MapHackEntityData_t::SetKeyValue( const char *pszKeyName, const char *pszNe
 
 				// prevData has a space at the start, separating the value from the key
 				// Add 1 to prevData when pasting in the new Value, to account for the space
-				const intp offset = entDataSize - ( pPrevData - m_pEntData ) + 1;
 				V_strncpy( pPrevData + 1, szNewValue, newValueLen );
-				V_strcat( pPrevData, pPostData, (int)( entDataSize - offset ) );
+				V_strcat( pPrevData, pPostData, entDataSize - ( pPrevData - m_pEntData ) + 1 );
 
 				delete[] pPostData;
 
